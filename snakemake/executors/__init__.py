@@ -1832,6 +1832,9 @@ class KubernetesExecutor(ClusterExecutor):
         container.volume_mounts = [
             kubernetes.client.V1VolumeMount(name="source", mount_path="/source")
         ]
+        container.volume_mounts.append([
+            kubernetes.client.V1VolumeMount(name= "pvc", mount_path ="/pvc")
+        ])
 
         node_selector = {}
         if "machine_type" in job.resources.keys():
@@ -1872,7 +1875,10 @@ class KubernetesExecutor(ClusterExecutor):
         # workdir as an emptyDir volume of undefined size
         workdir_volume = kubernetes.client.V1Volume(name="workdir")
         workdir_volume.empty_dir = kubernetes.client.V1EmptyDirVolumeSource()
-        body.spec.volumes = [secret_volume, workdir_volume]
+
+        pvc_volume = kubernetes.client.V1Volume(name="pvc")
+        pvc_volume.persistent_volume_claim = kubernetes.client.V1PersistentVolumeClaimVolumeSource(claim_name="pvc")
+        body.spec.volumes = [secret_volume, workdir_volume, pvc_volume]
 
         # env vars
         container.env = []
