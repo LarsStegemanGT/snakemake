@@ -605,8 +605,8 @@ class _IOFile(str):
         else:
             return None
 
-    def is_same_checksum(self, other_checksum):
-        checksum = self.checksum()
+    def is_same_checksum(self, other_checksum, force=False):
+        checksum = self.checksum(force=force)
         if checksum is None or other_checksum is None:
             # if no checksum available or files too large, not the same
             return False
@@ -1065,7 +1065,7 @@ def pipe(value):
     if is_flagged(value, "remote"):
         raise SyntaxError("Pipes may not be remote files.")
     if ON_WINDOWS:
-        logger.warning("Pipes is not yet supported on Windows.")
+        logger.warning("Pipes are not yet supported on Windows.")
     return flag(value, "pipe", not ON_WINDOWS)
 
 
@@ -1112,6 +1112,10 @@ def dynamic(value):
 
 def touch(value):
     return flag(value, "touch")
+
+
+def ensure(value, non_empty=False, sha256=None):
+    return flag(value, "ensure", {"non_empty": non_empty, "sha256": sha256})
 
 
 def unpack(value):
@@ -1439,6 +1443,9 @@ def git_content(git_file):
 
 def strip_wildcard_constraints(pattern):
     """Return a string that does not contain any wildcard constraints."""
+    if is_callable(pattern):
+        # do not apply on e.g. input functions
+        return pattern
 
     def strip_constraint(match):
         return "{{{}}}".format(match.group("name"))
@@ -1603,11 +1610,10 @@ class Namedlist(list):
         return self.__dict__.get(key, default_value)
 
     def __getitem__(self, key):
-        try:
+        if isinstance(key, str):
+            return getattr(self, key)
+        else:
             return super().__getitem__(key)
-        except TypeError:
-            pass
-        return getattr(self, key)
 
     def __hash__(self):
         return hash(tuple(self))
