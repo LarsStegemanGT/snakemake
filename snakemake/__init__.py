@@ -1973,6 +1973,7 @@ def get_argument_parser(profile=None):
             "iRODS",
             "AzBlob",
             "XRootD",
+            "LocalDirRemoteProvider"
         ],
         help="Specify default remote provider to be used for "
         "all input and output files that don't yet specify "
