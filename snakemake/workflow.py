@@ -474,7 +474,9 @@ class Workflow:
         is_overwrite = self.is_rule(name)
         if not allow_overwrite and is_overwrite:
             raise CreateRuleException(
-                "The name {} is already used by another rule".format(name)
+                "The name {} is already used by another rule".format(name),
+                lineno=lineno,
+                snakefile=snakefile,
             )
         rule = Rule(name, self, lineno=lineno, snakefile=snakefile)
         self._rules[rule.name] = rule
@@ -797,20 +799,7 @@ class Workflow:
         dag.update_checkpoint_dependencies()
         dag.check_dynamic()
 
-        try:
-            self.persistence.lock()
-        except IOError:
-            logger.error(
-                "Error: Directory cannot be locked. Please make "
-                "sure that no other Snakemake process is trying to create "
-                "the same files in the following directory:\n{}\n"
-                "If you are sure that no other "
-                "instances of snakemake are running on this directory, "
-                "the remaining lock was likely caused by a kill signal or "
-                "a power loss. It can be removed with "
-                "the --unlock argument.".format(os.getcwd())
-            )
-            return False
+        self.persistence.lock()
 
         if cleanup_shadow:
             self.persistence.cleanup_shadow()
@@ -1493,6 +1482,14 @@ class Workflow:
                         "Priority values have to be numeric.", rule=rule
                     )
                 rule.priority = ruleinfo.priority
+
+            if ruleinfo.retries:
+                if not isinstance(ruleinfo.retries, int) or ruleinfo.retries < 0:
+                    raise RuleException(
+                        "Retries values have to be integers >= 0", rule=rule
+                    )
+            rule.restart_times = ruleinfo.retries or self.restart_times
+
             if ruleinfo.version:
                 rule.version = ruleinfo.version
             if ruleinfo.log:
@@ -1598,7 +1595,6 @@ class Workflow:
             rule.wrapper = ruleinfo.wrapper
             rule.template_engine = ruleinfo.template_engine
             rule.cwl = ruleinfo.cwl
-            rule.restart_times = self.restart_times
             rule.basedir = self.current_basedir
 
             if ruleinfo.handover:
@@ -1778,6 +1774,13 @@ class Workflow:
 
         return decorate
 
+    def retries(self, retries):
+        def decorate(ruleinfo):
+            ruleinfo.retries = retries
+            return ruleinfo
+
+        return decorate
+
     def shadow(self, shadow_depth):
         def decorate(ruleinfo):
             ruleinfo.shadow_depth = shadow_depth
@@ -1927,6 +1930,11 @@ class Workflow:
                 )
             else:
                 # local inheritance
+                if self.modifier.skip_rule(name_modifier):
+                    # The parent use rule statement is specific for a different particular rule
+                    # hence this local use rule statement can be skipped.
+                    return
+
                 if len(rules) > 1:
                     raise WorkflowError(
                         "'use rule' statement from rule in the same module must declare a single rule but multiple rules are declared."
